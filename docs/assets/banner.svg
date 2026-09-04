@@ -1,0 +1,57 @@
+<svg width="900" height="220" viewBox="0 0 900 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Security Audit Tool banner">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="55%" stop-color="#111827"/>
+      <stop offset="100%" stop-color="#052e2b"/>
+    </linearGradient>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="titleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#a7f3d0"/>
+      <stop offset="100%" stop-color="#34d399"/>
+    </linearGradient>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M 28 0 L 0 0 0 28" fill="none" stroke="#1f2937" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="900" height="220" fill="url(#bg)"/>
+  <rect width="900" height="220" fill="url(#grid)" opacity="0.35"/>
+
+  <!-- soft glow accents -->
+  <circle cx="820" cy="30" r="120" fill="#059669" opacity="0.12"/>
+  <circle cx="60" cy="200" r="100" fill="#34d399" opacity="0.10"/>
+
+  <!-- shield icon -->
+  <g transform="translate(60,45)">
+    <path d="M65 0 L128 22 V78 C128 118 100 148 65 160 C30 148 2 118 2 78 V22 Z"
+          fill="url(#shieldGrad)" stroke="#022c22" stroke-width="3"/>
+    <path d="M65 14 L114 30 V78 C114 110 93 134 65 145 C37 134 16 110 16 78 V30 Z"
+          fill="#052e1e" opacity="0.35"/>
+    <!-- checkmark -->
+    <path d="M38 78 L58 98 L96 52" fill="none" stroke="#ecfdf5" stroke-width="9"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- title -->
+  <text x="240" y="98" font-family="'Segoe UI', 'DejaVu Sans', Arial, sans-serif"
+        font-size="46" font-weight="700" fill="url(#titleGrad)">Security Audit Tool</text>
+
+  <!-- subtitle -->
+  <text x="242" y="136" font-family="'Segoe UI', 'DejaVu Sans', Arial, sans-serif"
+        font-size="20" fill="#9ca3af">Linux (Ubuntu/Debian) + Termux &#183; Read-only &#183; No dependencies</text>
+
+  <!-- Persian tagline -->
+  <text x="838" y="185" font-family="'Segoe UI', Tahoma, 'DejaVu Sans', Arial, sans-serif"
+        font-size="19" fill="#6ee7b7" text-anchor="end" font-weight="600">بررسی امنیتی سریع سیستم شما</text>
+
+  <!-- bottom divider dots -->
+  <g fill="#34d399" opacity="0.7">
+    <circle cx="242" cy="168" r="3"/>
+    <circle cx="258" cy="168" r="3"/>
+    <circle cx="274" cy="168" r="3"/>
+  </g>
+</svg>

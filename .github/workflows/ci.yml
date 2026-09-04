@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  shellcheck:
+    name: ShellCheck static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: '.'
+          severity: warning
+
+  syntax-and-tests:
+    name: Syntax check + functional tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bash syntax check
+        run: bash -n security_audit.sh
+
+      - name: Make scripts executable
+        run: chmod +x security_audit.sh tests/test_security_audit.sh
+
+      - name: Run test suite
+        run: bash tests/test_security_audit.sh
+
+  shfmt:
+    name: Shell formatting check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mfinelli/setup-shfmt@v3
+      - name: Check formatting (non-blocking)
+        run: shfmt -d -i 4 -ci security_audit.sh || true
