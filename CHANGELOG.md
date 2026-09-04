@@ -1,4 +1,25 @@
+# Changelog
+
+## v2.0.0
+- Context-aware process and shell startup detection to reduce false positives.
+- Added safer network visibility: TCP/UDP sockets, listeners, routes, interfaces, and DNS context where available.
+- Unavailable Android/Termux capabilities are reported explicitly instead of being treated as safe findings.
+- SSH authorized_keys output never prints public-key material; fingerprints are used when available.
+- Executable-file checks use actual executable permissions rather than filename extensions alone.
+- Hardened behavior under limited PATH and paths containing spaces.
+
 # تاریخچه تغییرات (Changelog)
+
+## [2.0.0] - 2026-09-04
+
+### بهبودها
+- تشخیص پردازش‌ها از حالت تطبیق ساده نام به امتیازدهی زمینه‌ای ارتقا یافت تا مواردی مثل `pdfminer` یا نام‌های عمومی بی‌دلیل مشکوک نشوند.
+- تحلیل شبکه گسترده‌تر شد: اتصالات، listenerها، مسیر پیش‌فرض، رابط‌ها و DNS در صورت دسترسی گزارش می‌شوند.
+- listenerهای بالقوه پرریسک فقط وقتی هشدار می‌شوند که روی آدرس غیرمحلی در دسترس باشند.
+- بررسی فایل‌های اجرایی بر اساس permission واقعی انجام می‌شود، نه صرفاً پسوند فایل.
+- تشخیص rc-file و cron برای جلوگیری از false positiveهای رایج مانند `lesspipe` و `dircolors` دقیق‌تر شد.
+- وضعیت `UNAVAILABLE` از `SAFE` تفکیک شده و نتیجه نهایی ادعای امنیت قطعی نمی‌کند.
+
 
 این پروژه از قالب [Keep a Changelog](https://keepachangelog.com/) پیروی می‌کند.
 

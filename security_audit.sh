@@ -31,7 +31,7 @@ BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
 ISSUES_FOUND=0
 CHECKS_UNAVAILABLE=0
-SCRIPT_VERSION="1.0.2"
+SCRIPT_VERSION="2.0.0"
 
 # ---------- تشخیص محیط اجرا (Termux یا لینوکس معمولی) ----------
 IS_TERMUX=0
@@ -121,16 +121,31 @@ section "1) پردازش‌های مشکوک"
 # نشود. فیلتر قبلی (grep -v 'grep -Ei') به عرض ستون COMMAND در `ps aux`
 # وابسته بود و در برخی سیستم‌ها که خروجی غیر-tty را truncate می‌کنند ممکن
 # بود کار نکند؛ بریکت‌تریک این وابستگی را کاملاً حذف می‌کند.
-SUSPICIOUS_RE='[r]andom|[c]rypto|[m]iner|[h]idden|[x]mrig|[k]insing|[k]devtmpfsi|[c]ryptonight'
-
-FOUND_PROC="$(ps aux 2>/dev/null | grep -Ei -- "$SUSPICIOUS_RE")"
-if [ -n "$FOUND_PROC" ]; then
-    flag "پردازش(های) با نام مشکوک:"
+SUSPICIOUS_RE='[x]mrig|[k]insing|[k]devtmpfsi|[c]ryptominer|[c]rypto[-_ ]?miner|[c]ryptonight|[m]iner'
+FOUND_PROC=""
+if has_cmd ps; then
+    PS_OUT="$(ps aux 2>/dev/null || true)"
+    while IFS= read -r proc_line; do
+        [ -n "$proc_line" ] || continue
+        lower="$(printf '%s' "$proc_line" | tr '[:upper:]' '[:lower:]')"
+        # Ignore our own audit command line and grep helpers.
+        printf '%s' "$lower" | grep -Eq 'security_audit\.sh|grep -e|grep -i|awk.*score' && continue
+        score=0
+        printf '%s' "$lower" | grep -Eq 'xmrig|kinsing|kdevtmpfsi|cryptonight|cryptominer' && score=$((score+4))
+        printf '%s' "$lower" | grep -Eq '/tmp/|/dev/shm/|/var/tmp/|/\.cache/\.[a-z0-9_-]{5,}' && score=$((score+3))
+        printf '%s' "$lower" | grep -Eq '(^|[[:space:]/_-])miner([[:space:]/_-]|$)' && score=$((score+2))
+        printf '%s' "$lower" | grep -Eq 'curl|wget|base64|nc[[:space:]]+.*-e|/bin/sh[[:space:]]+-c' && score=$((score+2))
+        if [ "$score" -ge 4 ]; then
+            FOUND_PROC="${FOUND_PROC}${proc_line}"$'\n'
+        fi
+    done <<< "$PS_OUT"
+fi
+if [ -n "${FOUND_PROC//[$'\n\t ']/}" ]; then
+    flag "پردازش با الگوی تهدید و/یا مسیر اجرای غیرعادی پیدا شد:"
     log_plain "$FOUND_PROC"
 else
-    ok "پردازش با نام مشکوک پیدا نشد."
+    ok "پردازش با الگوی تهدیدِ پرخطر پیدا نشد. نام‌های عمومی مثل miner به‌تنهایی هشدار محسوب نمی‌شوند."
 fi
-
 log_plain ""
 log_plain "${BOLD}-- پردازش‌های اجراشده از /tmp یا /dev/shm --${NC}"
 TMP_PROC="$(ls -l /proc/*/exe 2>/dev/null | grep -E '/tmp|/dev/shm' || true)"
@@ -220,21 +235,27 @@ fi
 
 log_plain ""
 log_plain "${BOLD}-- فایل‌های اجرایی مشکوک (۷ روز اخیر) --${NC}"
-EXEC_SEARCH_DIRS=("$DOWNLOAD_DIR")
-[ "$IS_TERMUX" -eq 0 ] && EXEC_SEARCH_DIRS+=("/tmp" "/dev/shm")
 EXEC_FILES=""
-for d in "${EXEC_SEARCH_DIRS[@]}"; do
-    [ -d "$d" ] || continue
-    found="$(find "$d" -type f \( -iname '*.sh' -o -iname '*.bin' -o -iname '*.py' -o -iname '*.exe' -o -iname '*.elf' \) -mtime -7 2>/dev/null)"
+# Executable files in Downloads deserve review. Executable bits alone do not
+# prove malware. In system temp directories, only hidden executables are raised
+# to avoid noisy false positives from legitimate temporary tooling.
+if [ -d "$DOWNLOAD_DIR" ]; then
+    found="$(find "$DOWNLOAD_DIR" -type f -perm /111 -mtime -7 2>/dev/null)"
     [ -n "$found" ] && EXEC_FILES="${EXEC_FILES}${found}"$'\n'
-done
+fi
+if [ "$IS_TERMUX" -eq 0 ]; then
+    for d in /tmp /dev/shm; do
+        [ -d "$d" ] || continue
+        found="$(find "$d" -maxdepth 1 -type f -perm /111 -name '.*' -mtime -7 2>/dev/null)"
+        [ -n "$found" ] && EXEC_FILES="${EXEC_FILES}${found}"$'\n'
+    done
+fi
 if [ -n "${EXEC_FILES//[$'\n\t ']/}" ]; then
-    flag "فایل‌های اجرایی اخیر:"
+    flag "فایل اجرایی اخیر در مسیر کاربر یا فایل اجرایی مخفی در مسیر موقت پیدا شد؛ این مورد نیاز به بررسی دارد و لزوماً بدافزار نیست:"
     log_plain "$EXEC_FILES"
 else
-    ok "فایل اجرایی مشکوکی پیدا نشد."
+    ok "فایل اجرایی غیرعادیِ اخیر پیدا نشد."
 fi
-
 log_plain ""
 log_plain "${BOLD}-- فایل‌های پنهان در دایرکتوری هوم --${NC}"
 HIDDEN_FILES="$(find "$HOME_DIR" -maxdepth 1 -name '.*' -type f 2>/dev/null)"
@@ -318,13 +339,28 @@ if [ -f "$AUTH_KEYS" ]; then
     while IFS= read -r line; do
         [ -z "$line" ] && continue
         case "$line" in \#*) continue ;; esac
+        KEY_TYPE="$(printf '%s\n' "$line" | awk '{print $1}')"
+        COMMENT="$(printf '%s\n' "$line" | awk '{print $NF}')"
         if has_cmd ssh-keygen; then
-            FP="$(printf '%s\n' "$line" | ssh-keygen -lf /dev/stdin 2>/dev/null)"
-            log_plain "${FP:-$(printf '%s' "$line" | cut -c1-60)...(نامعتبر یا فرمت ناشناخته)}"
+            # Never feed the raw key to log_plain. Write it to a private temp file
+            # and let ssh-keygen return only its fingerprint. Invalid keys fall
+            # back to type/comment without exposing key material.
+            KEY_TMP="$(mktemp 2>/dev/null || true)"
+            if [ -n "$KEY_TMP" ]; then
+                chmod 600 "$KEY_TMP" 2>/dev/null || true
+                printf '%s\n' "$line" > "$KEY_TMP"
+                FP="$(ssh-keygen -lf "$KEY_TMP" 2>/dev/null || true)"
+                rm -f "$KEY_TMP"
+            else
+                FP=""
+            fi
+            if [ -n "$FP" ]; then
+                log_plain "$FP"
+            else
+                log_plain "نوع: $KEY_TYPE   کامنت: $COMMENT   (اثر انگشت قابل استخراج نیست)"
+            fi
         else
-            KEY_TYPE="$(printf '%s\n' "$line" | awk '{print $1}')"
-            COMMENT="$(printf '%s\n' "$line" | awk '{print $NF}')"
-            log_plain "نوع: $KEY_TYPE   کامنت: $COMMENT"
+            log_plain "نوع: $KEY_TYPE   کامنت: $COMMENT   (ssh-keygen در دسترس نیست)"
         fi
     done < "$AUTH_KEYS"
     info "هر کلیدی که خودتان اضافه نکرده‌اید را فوراً از authorized_keys حذف کنید."
@@ -343,36 +379,36 @@ fi
 ###############################################################################
 section "7) جستجوی بدافزارهای شناخته‌شده"
 
-MALWARE_PATTERNS=("*kdevtmpfsi*" "*kinsing*" "*xmrig*" "*miner*" "*cryptonight*")
+MALWARE_NAMES=("xmrig" "kinsing" "kdevtmpfsi" "cryptonight" "cryptominer")
 
 if [ "$IS_TERMUX" -eq 0 ]; then
-    log_plain "${BOLD}-- جستجو در فایل‌سیستم (حداکثر ۲۰ ثانیه، ممکن است ناقص باشد) --${NC}"
+    log_plain "${BOLD}-- جستجوی نام‌های بدافزار شناخته‌شده (حداکثر ۲۰ ثانیه) --${NC}"
     FIND_ARGS=()
-    for i in "${!MALWARE_PATTERNS[@]}"; do
+    for i in "${!MALWARE_NAMES[@]}"; do
         [ "$i" -gt 0 ] && FIND_ARGS+=(-o)
-        FIND_ARGS+=(-iname "${MALWARE_PATTERNS[$i]}")
+        FIND_ARGS+=(-iname "${MALWARE_NAMES[$i]}")
     done
-    MALWARE_FILES="$(safe_run 20 find / -xdev \( "${FIND_ARGS[@]}" \))"
+    MALWARE_FILES="$(safe_run 20 find / -xdev -type f \( "${FIND_ARGS[@]}" \) 2>/dev/null)"
     if [ -n "$MALWARE_FILES" ]; then
-        flag "فایل‌های مشکوک به بدافزار معروف:"
+        flag "فایل با نام دقیقِ مرتبط با بدافزار شناخته‌شده پیدا شد:"
         log_plain "$MALWARE_FILES"
     else
-        ok "اثری از بدافزارهای معروف در جستجوی محدود پیدا نشد."
+        ok "فایل با نام دقیقِ بدافزارهای شناخته‌شده در جستجوی محدود پیدا نشد."
     fi
 
     log_plain ""
-    log_plain "${BOLD}-- فایل‌های مخفی با نام تصادفی در /tmp، /dev/shm --${NC}"
+    log_plain "${BOLD}-- فایل‌های مخفی با نام تصادفی در /tmp و /dev/shm --${NC}"
     RANDOM_TMP=""
     for d in /tmp /dev/shm; do
         [ -d "$d" ] || continue
-        f="$(find "$d" -maxdepth 1 -type f -regextype posix-extended -regex '.*/\.[a-zA-Z0-9]{6,}$' 2>/dev/null)"
+        f="$(find "$d" -maxdepth 1 -type f -regextype posix-extended -regex '.*/\.[a-zA-Z0-9]{8,}$' 2>/dev/null)"
         [ -n "$f" ] && RANDOM_TMP="${RANDOM_TMP}${f}"$'\n'
     done
     if [ -n "${RANDOM_TMP//[$'\n\t ']/}" ]; then
-        flag "فایل مخفی با نام تصادفی پیدا شد:"
+        flag "فایل مخفی با نام تصادفی در مسیر موقت پیدا شد:"
         log_plain "$RANDOM_TMP"
     else
-        ok "فایل مخفی با نام تصادفی پیدا نشد."
+        ok "فایل مخفی با نام تصادفی در مسیرهای موقت پیدا نشد."
     fi
 else
     unavailable "در Termux جستجوی کل فایل‌سیستم انجام نمی‌شود (محدودیت دسترسی اندروید). فقط مسیرهای قابل‌دسترسی Termux بررسی می‌شوند."
